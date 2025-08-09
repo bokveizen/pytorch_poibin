@@ -142,7 +142,7 @@ P_i(k) = P_{i-1}(k) × (1 - p_i) + P_{i-1}(k-1) × p_i
 ```
 
 ### FFT Approach  
-Computes the characteristic function and applies inverse DFT,
+Computes the characteristic function and applies inverse DFT.
 
 ## Contributing
 
