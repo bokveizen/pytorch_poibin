@@ -152,11 +152,6 @@ Contributions welcome! Areas of interest:
 - Additional test cases
 - Documentation improvements
 
-## References
-
-* Hong, Yili. "On computing the distribution function for the Poisson binomial distribution." Computational Statistics & Data Analysis 59 (2013): 41-51.
-* Bu, Fanchen, et al. "Tackling Prevalent Conditions in Unsupervised Combinatorial Optimization: Cardinality, Minimum, Covering, and More." International Conference on Machine Learning 2024.
-
 ## License
 
 This project is licensed under the MIT License.
@@ -171,6 +166,16 @@ If you use this library in your research, please cite:
   author = {Bu, Fanchen},
   year = {2025},
   url = {https://github.com/fanchen/pytorch_poibin}
+}
+
+@article{hong2013computing,
+  title={On computing the distribution function for the Poisson binomial distribution},
+  author={Hong, Yili},
+  journal={Computational Statistics \& Data Analysis},
+  volume={59},
+  pages={41--51},
+  year={2013},
+  publisher={Elsevier}
 }
 ```
 
