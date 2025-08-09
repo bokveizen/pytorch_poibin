@@ -1,5 +1,5 @@
 import math
-from poi_bin import pmf_poibin, pmf_poibin_vec
+from poi_bin import pmf_poibin_fft
 import torch
 
 def left_tail_probs(probs_matrix, t, device, use_normalization=False):
@@ -12,14 +12,12 @@ def left_tail_probs(probs_matrix, t, device, use_normalization=False):
     Args:
         probs_matrix (Tensor or array-like): A collection of Bernoulli success probabilities for each trial.
         t (int): The threshold; the function returns the cumulative probability for sums strictly less than t.
-        device: The computational device (e.g., CPU or GPU) to be used during the computation.
-        use_normalization (bool, optional): Flag to determine whether to normalize the probabilities before processing.
-                                            Defaults to False.
+        device: The computational device (e.g., CPU or GPU) to be used during the computation.        
     Returns:
         A scalar representing the probability that the sum of the Bernoulli random variables is less than t.
     """
     
-    pmf_poibin_probs = pmf_poibin(probs_matrix, device, use_normalization)
+    pmf_poibin_probs = pmf_poibin_fft(probs_matrix, device)
     return pmf_poibin_probs[:, :t].sum()
 
 def right_tail_probs(probs_matrix, t, device, use_normalization=False):
@@ -34,14 +32,12 @@ def right_tail_probs(probs_matrix, t, device, use_normalization=False):
         probs_matrix (Tensor or array-like): A collection of Bernoulli success probabilities for each trial.
         t (int): The threshold; the function returns the cumulative probability for sums strictly greater than t.
         device: The computational device (e.g., CPU or GPU) to be used during the computation.
-        use_normalization (bool, optional): Flag to determine whether to normalize the probabilities before processing.
-                                            Defaults to False.
     
     Returns:
         A scalar representing the probability that the sum of the Bernoulli random variables is greater than t.
     """    
         
-    pmf_poibin_probs = pmf_poibin(probs_matrix, device, use_normalization)
+    pmf_poibin_probs = pmf_poibin_fft(probs_matrix, device)
     return pmf_poibin_probs[:, t + 1:].sum()
 
 
@@ -65,7 +61,6 @@ def proportional_left_tail_probs(probs_matrix, beta, S, U, device, use_normaliza
             U (torch.Tensor): A binary mask tensor of length n representing the "uninteresting" subset (typically the complement of S).
                 > shape: (b, n), or (1, n) if the same mask is applied to all rows.
             device (torch.device): The device (CPU or GPU) where tensor computations should be performed.
-            use_normalization (bool, optional): If True, normalization is applied when computing the probability mass function (PMF). Default is False.
     Returns:
             torch.Tensor: A tensor of shape (b,) containing the computed probabilities Pr[|S⁺|/|I⁺| < beta] for each row in probs_matrix.
     """
@@ -73,7 +68,7 @@ def proportional_left_tail_probs(probs_matrix, beta, S, U, device, use_normaliza
     probs_S = probs_matrix * S  # (b, n)
     probs_U = probs_matrix * U  # (b, n)
     
-    pmf_U = pmf_poibin(probs_U, device, use_normalization)  # (b, n+1)
+    pmf_U = pmf_poibin_fft(probs_U, device)  # (b, n+1)
     
     n_vecs = probs_matrix.shape[0]
     
@@ -84,7 +79,7 @@ def proportional_left_tail_probs(probs_matrix, beta, S, U, device, use_normaliza
     
     for t in range(num_U.item() + 1):
         th_t = math.ceil(beta * t / (1 - beta))
-        res += pmf_U[:, t] * left_tail_probs(probs_S, th_t, device, use_normalization)
+        res += pmf_U[:, t] * left_tail_probs(probs_S, th_t, device)
     
     return res
 
@@ -109,7 +104,6 @@ def proportional_right_tail_probs(probs_matrix, beta, S, U, device, use_normaliz
             U (torch.Tensor): A binary mask tensor of length n representing the "uninteresting" subset (typically the complement of S).
                 > shape: (b, n), or (1, n) if the same mask is applied to all rows.
             device (torch.device): The device (CPU or GPU) where tensor computations should be performed.
-            use_normalization (bool, optional): If True, normalization is applied when computing the probability mass function (PMF). Default is False.
     Returns:
             torch.Tensor: A tensor of shape (b,) containing the computed probabilities Pr[|S⁺|/|I⁺| < beta] for each row in probs_matrix.
     """
@@ -117,7 +111,7 @@ def proportional_right_tail_probs(probs_matrix, beta, S, U, device, use_normaliz
     probs_S = probs_matrix * S  # (b, n)
     probs_U = probs_matrix * U  # (b, n)
     
-    pmf_U = pmf_poibin(probs_U, device, use_normalization)  # (b, n+1)
+    pmf_U = pmf_poibin_fft(probs_U, device)  # (b, n+1)
     
     n_vecs = probs_matrix.shape[0]
     
@@ -128,6 +122,6 @@ def proportional_right_tail_probs(probs_matrix, beta, S, U, device, use_normaliz
         
     for t in range(num_U.item() + 1):
         th_t = math.floor(beta * t / (1 - beta))
-        res += pmf_U[:, t] * right_tail_probs(probs_S, th_t, device, use_normalization)
+        res += pmf_U[:, t] * right_tail_probs(probs_S, th_t, device)
     
     return res
