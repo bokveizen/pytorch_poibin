@@ -165,7 +165,7 @@ If you use this library in your research, please cite:
   title = {PyTorch Poisson Binomial: Efficient computation with multiple algorithms},
   author = {Bu, Fanchen},
   year = {2025},
-  url = {https://github.com/fanchen/pytorch_poibin}
+  url = {https://github.com/bokveizen/pytorch_poibin}
 }
 
 @article{hong2013computing,
