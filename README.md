@@ -16,7 +16,7 @@ Efficient computation of Poisson binomial distributions in PyTorch with multiple
 
 ## Current Implementations
 
-### 1. Dynamic Programming (Recommended for most use cases)
+### 1. Dynamic Programming
 ```python
 from poi_bin import pmf_poibin_naive_dp_vectorized
 
@@ -67,10 +67,10 @@ print(pmf_batch.shape)  # -> (batch_size, n+1)
 
 ## Performance Characteristics
 
-| Method | Time Complexity | Best Use Case | Memory | Notes |
-|--------|----------------|---------------|---------|-------|
-| `pmf_poibin_naive_dp_vectorized` | O(n²) | **Most problems** | O(n) | Fast, simple operations |
-| `pmf_poibin_fft` | O(n²) + O(n log n) | Large n (future) | O(n) | Complex arithmetic overhead |
+| Method | Time Complexity | Current Use Case | Memory | Notes |
+|--------|----------------|------------------|---------|-------|
+| `pmf_poibin_naive_dp_vectorized` | O(n²) | **Currently best for n < 100** | O(n) | Fast, simple operations |
+| `pmf_poibin_fft` | O(n²) + O(n log n) | Interim implementation | O(n) | Will be optimized with tree convolution |
 | `pmf_poibin_naive_improved` | O(2^n) | n ≤ 12 only | O(2^n) | Educational |
 | `pmf_poibin_naive` | O(2^n) | n ≤ 10 only | O(2^n) | Reference implementation |
 
@@ -95,10 +95,11 @@ python analyze_fft_vs_dp.py
 ## Planned Optimizations
 
 ### 1. Divide-and-Conquer FFT Tree Convolution
-**Target**: O(n log² n) time complexity for very large problems
+**Target**: O(n log² n) time complexity - **this will become the primary method**
 - Break down convolution into smaller subproblems
 - Use tree structure to minimize FFT overhead
-- Expected to outperform current methods for n > 1000
+- Expected to outperform DP for n > 1000 and become the recommended approach
+- Will make FFT-based computation the default choice for all problem sizes
 
 ### 2. Mixed-Precision Support
 - FP16/FP32 support for reduced GPU memory usage
@@ -119,7 +120,6 @@ pmf = pmf_poibin_auto(prob_vector, device)  # Chooses optimal implementation
 ### Core Functions
 
 #### `pmf_poibin_naive_dp_vectorized(prob_matrix_raw, device)`
-**Recommended for most use cases**
 - **Arguments**:
   - `prob_matrix_raw` (`Tensor[B, n]` or `Tensor[n]`): probability values in [0,1]
   - `device` (`torch.device`): target device for computation
