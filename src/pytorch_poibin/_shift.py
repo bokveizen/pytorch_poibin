@@ -3,7 +3,7 @@
 Peres, Lee, Keich (2020), https://arxiv.org/abs/2004.07429, Algorithm 1.
 We use a real-FFT tree rather than the paper's optional frugal transform engine.
 The root solve is not differentiated: the exact unshifted probability is
-independent of the chosen tilt. A log-DP adjoint supplies exact first derivatives
+independent of the chosen tilt. Leave-one-out log densities supply first derivatives
 without differentiating through FFT clipping or ill-conditioned cancellation.
 """
 
@@ -12,7 +12,7 @@ from torch import Tensor
 from torch.autograd.function import once_differentiable
 
 from . import _backends
-from ._log_dp import log_dp, log_factors
+from ._log_dp import log_factors, tail_gradient
 
 
 def solve_tilt(logits: Tensor, target: Tensor, active: Tensor) -> Tensor:
@@ -128,22 +128,15 @@ class _ShiftTail(torch.autograd.Function):
     @staticmethod
     def forward(ctx, probs: Tensor, k: int, upper: bool):
         ctx.k, ctx.upper = k, upper
-        ctx.save_for_backward(probs)
-        return shifted_logtail(probs, k, upper)
+        result = shifted_logtail(probs, k, upper)
+        ctx.save_for_backward(probs, result)
+        return result
 
     @staticmethod
     @once_differentiable
     def backward(ctx, grad_output: Tensor):
-        (probs,) = ctx.saved_tensors
-        with torch.enable_grad():
-            source = probs.detach().requires_grad_(True)
-            reference = log_dp(
-                source,
-                source.shape[-1] - ctx.k - 1 if ctx.upper else ctx.k,
-                failures=ctx.upper,
-                reduce=True,
-            )
-            (gradient,) = torch.autograd.grad(reference, source, grad_output)
+        probs, result = ctx.saved_tensors
+        gradient = tail_gradient(probs, ctx.k, ctx.upper, result, grad_output)
         return gradient, None, None
 
 

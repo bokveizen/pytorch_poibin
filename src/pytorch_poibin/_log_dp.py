@@ -1,4 +1,4 @@
-"""Log-semiring recurrence and its first-order signed-log adjoint.
+"""Log recurrences, signed-log PMF adjoints, and nonnegative tail derivatives.
 
 The adjoint differentiates probability coefficients, rather than log states.
 This retains paths through zero coefficients at deterministic input boundaries.
@@ -35,9 +35,80 @@ def _signed_difference(positive: Tensor, negative: Tensor) -> Tensor:
     return torch.where(positive > negative, magnitude, -magnitude)
 
 
+def _step(result: Tensor, log_p: Tensor, log_q: Tensor, limit: int) -> Tensor:
+    return torch.logaddexp(
+        pad(result + log_q.unsqueeze(-1), (0, 1), value=-torch.inf),
+        pad(result + log_p.unsqueeze(-1), (1, 0), value=-torch.inf),
+    )[..., : limit + 1]
+
+
+def tail_gradient(
+    probs: Tensor, k: int, upper: bool, total: Tensor, incoming: Tensor
+) -> Tensor:
+    """Use dF/dp_i = -P(X without i = k), with the opposite sign for SF.
+
+    Prefix/suffix log convolutions compute nonnegative leave-one-out densities.
+    Unlike subtracting adjoints, this retains tiny derivatives of near-one tails.
+    """
+    n = probs.shape[-1]
+    if n == 0:
+        return torch.zeros_like(probs)
+    failures = k > (n - 1) // 2
+    count = n - 1 - k if failures else k
+    log_p, log_q = log_factors(probs)
+    if failures:
+        log_p, log_q = log_q, log_p
+    state = probs.sum(-1, keepdim=True) * 0
+    prefixes = [state]
+    for i in range(n - 1):
+        state = _step(state, log_p[..., i], log_q[..., i], count)
+        prefixes.append(state)
+    suffix = probs.sum(-1, keepdim=True) * 0
+    nonzero = (incoming != 0) & torch.isfinite(total)
+    scale = torch.where(nonzero, incoming.abs(), 1).log() - torch.where(
+        nonzero, total, 0
+    )
+    scale = torch.where(nonzero, scale, -torch.inf)
+    sign = incoming.sign() * (1 if upper else -1)
+    derivatives = []
+    for i in range(n - 1, -1, -1):
+        prefix = prefixes[i]
+        start = max(0, count - suffix.shape[-1] + 1)
+        end = min(count + 1, prefix.shape[-1])
+        if start >= end:
+            density = probs.sum(-1) * 0 - torch.inf
+        else:
+            density = torch.logsumexp(
+                prefix[..., start:end]
+                + suffix[..., count - end + 1 : count - start + 1].flip(-1),
+                -1,
+            )
+        derivatives.append(sign * torch.exp(density + scale))
+        if i:
+            suffix = _step(suffix, log_p[..., i], log_q[..., i], count)
+    return torch.stack(derivatives[::-1], -1)
+
+
+class _LogTail(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, probs: Tensor, limit: int, failures: bool):
+        # Nested Function.forward is inference: no prefixes are kept here.
+        result = logsumexp(log_dp(probs, limit, failures=failures)).clamp_max(0)
+        ctx.k = probs.shape[-1] - limit - 1 if failures else limit
+        ctx.upper = failures
+        ctx.save_for_backward(probs, result)
+        return result
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, incoming):
+        probs, result = ctx.saved_tensors
+        return tail_gradient(probs, ctx.k, ctx.upper, result, incoming), None, None
+
+
 class _LogDP(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, probs: Tensor, limit: int, failures: bool, reduce: bool):
+    def forward(ctx, probs: Tensor, limit: int, failures: bool):
         log_p, log_q = log_factors(probs)
         if failures:
             log_p, log_q = log_q, log_p
@@ -51,23 +122,16 @@ class _LogDP(torch.autograd.Function):
             if ctx.needs_input_grad[0]:
                 states.append(result)
         ctx.failures = failures
-        ctx.reduce = reduce
         ctx.save_for_backward(probs, *states)
-        return logsumexp(result) if reduce else result
+        return result
 
     @staticmethod
     @once_differentiable
     def backward(ctx, grad_output: Tensor):
         probs, *states = ctx.saved_tensors
         if probs.shape[-1] == 0:
-            return torch.zeros_like(probs), None, None, None
+            return torch.zeros_like(probs), None, None
         final = states[-1]
-        if ctx.reduce:
-            # A cumulative event also differentiates zero final coefficients:
-            # d log(sum q_j) / d q_j = 1/sum(q), even where q_j = 0.
-            total = logsumexp(final).unsqueeze(-1)
-            grad_output = grad_output.unsqueeze(-1).expand_as(final)
-            final = total.expand_as(final)
         nonzero = (grad_output != 0) & torch.isfinite(final)
         log_abs = torch.where(nonzero, grad_output.abs(), 1).log()
         seed = log_abs - torch.where(nonzero, final, 0)
@@ -103,7 +167,7 @@ class _LogDP(torch.autograd.Function):
                 pad(negative, (0, 1), value=-torch.inf)[..., 1 : old_length + 1]
                 + success,
             )
-        return torch.stack(derivatives[::-1], -1), None, None, None
+        return torch.stack(derivatives[::-1], -1), None, None
 
 
 def log_dp(
@@ -116,6 +180,8 @@ def log_dp(
     # Function.forward runs with grad disabled, so decide whether to retain
     # prefixes here. A requires-grad input inside no_grad is still inference.
     source = probs if torch.is_grad_enabled() else probs.detach()
-    return _LogDP.apply(
-        source, probs.shape[-1] if limit is None else limit, failures, reduce
-    )
+    if reduce:
+        return _LogTail.apply(
+            source, probs.shape[-1] if limit is None else limit, failures
+        )
+    return _LogDP.apply(source, probs.shape[-1] if limit is None else limit, failures)

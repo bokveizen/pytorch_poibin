@@ -143,10 +143,11 @@ the tilted mean, convolves, and reconstructs the tail logarithm. Large requested
 tails use stable logarithmic complementation. Its bracketed solver and output
 checks stay on the input device but synchronize CUDA.
 
-Shifted FFT first derivatives use the log-DP adjoint, recomputing its prefix
-states. This deliberately avoids differentiating the numerical root or FFT
-cleanup; backward therefore has DP cost and memory, and is not promised to be
-faster. The method raises on solver or numerical-check failures without fallback.
+Count-tail first derivatives use nonnegative leave-one-out densities computed
+with prefix/suffix log DP. This retains tiny derivatives of near-one tails and
+avoids differentiating the numerical root or FFT cleanup. Shifted FFT backward
+therefore has DP cost and memory and is not promised to be faster. The method
+raises on solver or numerical-check failures without fallback.
 See [the algorithm and limitations](docs/numerics.md) and
 [experiment reproduction](benchmarks/README.md).
 

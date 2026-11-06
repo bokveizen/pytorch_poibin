@@ -32,12 +32,22 @@ Log recurrences use float64 internally and cast back to the promoted input dtype
 This avoids accumulating float32 rounding error across many trials, but the final
 float32 logarithm still has float32 quantization error. Use float64 for precise logs.
 
-Inference workspace has the same count dimensions as ordinary DP. Backward
-retains the prefix states and propagates positive/negative coefficient adjoints
-in signed log arithmetic. Differentiating coefficients, rather than log states,
-preserves paths through zero coefficients at deterministic inputs. Cumulative
-events seed all included coefficients, including zeros, so finite-event first
-derivatives remain correct at probabilities zero and one.
+Inference workspace has the same count dimensions as ordinary DP. The log-PMF
+backward retains prefix states and propagates positive/negative coefficient
+adjoints in signed log arithmetic. This preserves paths through zero coefficients
+at deterministic inputs, rather than differentiating unreachable log states.
+
+Cumulative-tail derivatives use the exact identities
+`dCDF(k)/dp_i = -P(X without i = k)` and `dSF(k)/dp_i = P(X without i = k)`.
+Prefix/suffix log convolutions compute these nonnegative densities, choosing the
+smaller success/failure count. Dividing in log space by the event probability
+gives the log-tail derivative without subtracting nearly equal adjoints. This
+retains tiny derivatives even for near-one events. Forward need not save its
+prefixes; backward builds the required density prefixes. Only the log-PMF's
+general weighted-output backward needs signed arithmetic. Forward log tails are
+capped at zero to remove positive roundoff; accumulation error near probability
+one can still dominate a very small log. Shifted FFT's logarithmic complementation
+is useful in that regime.
 
 Impossible log events return `-inf`; their derivatives are undefined, and this
 implementation uses zero gradients for those entries to make masked losses safe.
@@ -101,9 +111,11 @@ no epsilon floor or algorithm fallback is used.
 
 The solver runs without autograd. The exact unshifted result is independent of
 the tilt, but differentiating numerical FFT clipping can introduce errors. Our
-explicit first-order backward recomputes log-DP prefixes and uses their signed-log
-adjoint, including defined deterministic boundary derivatives. This adds DP
-backward time/storage; it does not provide FFT-complexity training. It shares the
+explicit first-order backward uses nonnegative leave-one-out log densities,
+including defined deterministic boundary derivatives. Prefix/suffix DP has
+O(B n (1+min(k,n-1-k))) work/storage inside support; this is not an FFT-complexity
+backward. The forward log tail supplies its normalization, so no cumulative
+reference probability is recomputed in backward. It shares the
 log-DP convention for impossible events and does not support second derivatives.
 Threshold, dtype/device, and batch semantics match the existing count-tail API.
 

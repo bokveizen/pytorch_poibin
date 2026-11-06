@@ -126,6 +126,25 @@ def main():
         ],
         rows,
     )
+    for tree in forward:
+        if (
+            tree["method"] != "fft_tree"
+            or tree["dtype"] != "float64"
+            or tree["batch_size"] != 16
+            or tree["n"] != 2048
+        ):
+            continue
+        by_block = {
+            r["block_size"]: r
+            for r in forward
+            if r["method"] == "fft_hybrid" and same_workload(r, tree)
+        }
+        if 32 in by_block and 128 in by_block:
+            lines.append(
+                f"- {tree['device']}, B=16, n=2048: default block 32 took {by_block[32]['median_seconds'] * 1e3:.3f} ms; "
+                f"block 128 took {by_block[128]['median_seconds'] * 1e3:.3f} ms, versus {tree['median_seconds'] * 1e3:.3f} ms for the plain FFT tree."
+            )
+    lines.append("")
     hybrids = [r for r in forward if r["method"] == "fft_hybrid"]
     for dtype in ["float32", "float64"]:
         subset = [r for r in hybrids if r["dtype"] == dtype]
@@ -249,8 +268,8 @@ def main():
     )
     lines += [
         "Shifted FFT accelerates only its forward algorithm. Its first-order backward",
-        "recomputes log-DP prefixes and invokes the signed-log adjoint. Training therefore",
-        "retains DP complexity and adds recomputation; it is not an FFT-complexity backward.",
+        "uses nonnegative leave-one-out densities from prefix/suffix log DP. Training",
+        "retains DP complexity; it is not an FFT-complexity backward.",
         "Long cases can have few timing samples within the bounded measurement window;",
         "the raw reports include sample counts and IQR rather than implying universal gains.",
         "For these fixed-width tails, truncated log DP is O(n), whereas shifted FFT",

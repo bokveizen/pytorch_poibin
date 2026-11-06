@@ -209,6 +209,15 @@ def test_signed_log_adjoint_against_polynomial(device):
         torch.testing.assert_close(actual, expected, atol=1e-9, rtol=1e-9)
 
 
+@pytest.mark.parametrize("method", ["dp", "shift_fft"])
+def test_near_one_tail_tiny_gradient(device, method):
+    p = torch.full((1000,), 0.5, device=device, dtype=torch.float64, requires_grad=True)
+    gradient = torch.autograd.grad(logcdf(p, 999, method=method), p)[0]
+    torch.testing.assert_close(
+        gradient, torch.full_like(p, -(2.0**-999)), atol=0, rtol=1e-9
+    )
+
+
 @pytest.mark.parametrize(
     "values,k", [([0.999] * 160, 2), ([0.001] * 160, 157), ([1e-300], 0)]
 )

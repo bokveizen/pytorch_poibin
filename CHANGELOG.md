@@ -6,8 +6,10 @@
   dtype preservation, including probabilities below ordinary floating-point range.
 - Add signed-log coefficient adjoints for defined first derivatives, including
   deterministic boundary cases; document the impossible-event convention.
+- Compute cumulative-tail derivatives with nonnegative leave-one-out log densities
+  to avoid cancellation and retain tiny near-one-event derivatives.
 - Add explicit shift_fft count tails with bracketed exponential tilting and
-  logarithmic reconstruction. Its first-order backward uses the log-DP adjoint.
+  logarithmic reconstruction. Its first-order backward uses prefix/suffix log DP.
 - Add experimental fft_hybrid block DP/FFT convolution and bounded experiments
   across block sizes, devices, dtypes, forward/backward latency, and memory.
 
