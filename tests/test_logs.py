@@ -177,6 +177,38 @@ def test_float32_extreme_log_accuracy(device):
     torch.testing.assert_close(logsf(p, 2047), reference, atol=0, rtol=0)
 
 
+@pytest.mark.parametrize("method", ["dp", "shift_fft"])
+def test_extreme_defined_boundary_gradients(device, method):
+    # These finite log events have defined derivatives ranging from 1e-300 to
+    # 1e300; ordinary probability-space cancellation is not an adequate oracle.
+    p = torch.tensor(
+        [0.0, 1e-300], device=device, dtype=torch.float64, requires_grad=True
+    )
+    gradient = torch.autograd.grad(logsf(p, 0, method=method), p)[0]
+    torch.testing.assert_close(gradient, torch.full_like(p, 1e300), atol=0, rtol=1e-12)
+    p = torch.tensor(
+        [1.0, 1e-300], device=device, dtype=torch.float64, requires_grad=True
+    )
+    gradient = torch.autograd.grad(logcdf(p, 1, method=method), p)[0]
+    torch.testing.assert_close(
+        gradient, p.new_tensor([-1e-300, -1]), atol=0, rtol=1e-12
+    )
+
+
+def test_signed_log_adjoint_against_polynomial(device):
+    generator = torch.Generator().manual_seed(841)
+    for n in [5, 17, 33]:
+        p = (
+            (torch.rand(2, n, generator=generator, dtype=torch.float64) * 0.9 + 0.05)
+            .to(device)
+            .requires_grad_()
+        )
+        weights = torch.linspace(-2, 3, n + 1, device=device, dtype=p.dtype)
+        expected = torch.autograd.grad((pmf(p).log() * weights).sum(), p)[0]
+        actual = torch.autograd.grad((logpmf(p) * weights).sum(), p)[0]
+        torch.testing.assert_close(actual, expected, atol=1e-9, rtol=1e-9)
+
+
 @pytest.mark.parametrize(
     "values,k", [([0.999] * 160, 2), ([0.001] * 160, 157), ([1e-300], 0)]
 )

@@ -52,3 +52,32 @@ def test_workspace_budget_is_conservative_for_backward():
     assert workspace_estimate(case) < 256 * 1024**2
     assert workspace_estimate({**case, "backward": True}) > 256 * 1024**2
     assert workspace_estimate({**case, "method": "fft_cf"}) > 256 * 1024**2
+
+
+def test_training_budget_allows_useful_comparisons():
+    case = {
+        "batch_size": 1,
+        "n": 2048,
+        "dtype": "float64",
+        "method": "dp",
+        "backward": True,
+    }
+    assert workspace_estimate(case) < 256 * 1024**2
+    assert workspace_estimate({**case, "batch_size": 16}) > 256 * 1024**2
+    for block in [8, 16, 32, 64, 128]:
+        assert (
+            workspace_estimate(
+                {**case, "method": "fft_hybrid", "batch_size": 16, "block_size": block}
+            )
+            < 256 * 1024**2
+        )
+
+
+def test_log_tail_reference_retains_underflow():
+    import math
+
+    from benchmarks.log_tails import reference
+
+    probability, gradient = reference(2000, 0.5, 1999, True)
+    assert abs(probability + 2000 * math.log(2)) < 1e-10
+    assert gradient == 2
