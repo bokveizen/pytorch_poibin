@@ -28,6 +28,9 @@ they do not take logs of an underflowed ordinary PMF. For 2,000 fair coins the
 log probability of zero or 2,000 successes remains `-2000*log(2)` even though
 the corresponding float64 probability is zero. Cumulative queries truncate the
 recurrence; SF uses original log-p and log-one-minus-p with the roles swapped.
+Log recurrences use float64 internally and cast back to the promoted input dtype.
+This avoids accumulating float32 rounding error across many trials, but the final
+float32 logarithm still has float32 quantization error. Use float64 for precise logs.
 
 Inference workspace has the same count dimensions as ordinary DP. Backward
 retains the prefix states and propagates positive/negative coefficient adjoints
@@ -69,6 +72,51 @@ Reference tests through n=512 target maximum absolute FFT error of `1e-5` for
 float32 and `1e-10` for float64. These are tested acceptance thresholds, not
 universal error bounds. Auto profiles must pass these thresholds on their exact
 measured workload across five distribution regimes.
+
+## Shifted FFT tails
+
+The explicit `shift_fft` backend implements exponential tilting as described in
+[Peres, Lee, and Keich (2020), Algorithm 1](https://arxiv.org/abs/2004.07429).
+It uses the real-FFT convolution tree already provided by this package, rather
+than their separate frugal transform optimization. It is an exact-distribution
+algorithm subject to floating-point error, not a saddlepoint approximation.
+
+For a tilt theta, each factor has log normalizer
+`logaddexp(log(1-p), log(p)+theta)`. Its tilted success and failure coefficients
+are computed separately; a rounded sigmoid complement cannot erase one. Bracket
+expansion and bisection solve for a tilted mean near the requested count. Targets
+at the effective support endpoints are moved half a count inward so the tilt
+remains finite. Zero/one probabilities define the effective support and remain
+exact deterministic factors. Guaranteed-success shifts are canceled analytically
+in the normalizer before reconstruction.
+
+Each batch row computes a favorable lower or upper tail. Unshifted logarithmic
+weights decay away from its boundary, so FFT noise across the opposite tail is
+not amplified. If the requested event is the complement, `log1p`/`expm1` give
+stable logarithmic complementation, including log probabilities near zero.
+The tilt solver is bracketed and bounded. Nonconvergence, nonfinite coefficients,
+negative coefficients below -1e-10, mass error above 1e-8, or invalid reconstructed
+tails raise RuntimeError. Bounded negative roundoff is clipped and normalized;
+no epsilon floor or algorithm fallback is used.
+
+The solver runs without autograd. The exact unshifted result is independent of
+the tilt, but differentiating numerical FFT clipping can introduce errors. Our
+explicit first-order backward recomputes log-DP prefixes and uses their signed-log
+adjoint, including defined deterministic boundary derivatives. This adds DP
+backward time/storage; it does not provide FFT-complexity training. It shares the
+log-DP convention for impossible events and does not support second derivatives.
+Threshold, dtype/device, and batch semantics match the existing count-tail API.
+
+## Hybrid DP–FFT convolution
+
+`method="fft_hybrid"` builds independent PMFs for blocks of `block_size` trials
+using DP, then combines them with the balanced real-FFT tree. Partial final
+blocks are padded with guaranteed failures; output is trimmed to n+1 counts.
+Float64 internals, final cleanup, and output dtype semantics match `fft_tree`.
+This changes constant factors and the initial work/memory balance. It does not
+remove FFT rare-tail limitations or imply that every block size is faster.
+The method is explicit; existing auto profiles are not broadened by these
+experiments without fresh accuracy and speed evidence.
 
 ## Proportional events
 

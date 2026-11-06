@@ -9,8 +9,8 @@ from torch import Tensor
 
 from . import _backends, _selection
 
-Method = Literal["dp", "fft_cf", "fft_tree", "auto"]
-_METHODS = {"dp", "fft_cf", "fft_tree", "auto"}
+Method = Literal["dp", "fft_cf", "fft_tree", "fft_hybrid", "shift_fft", "auto"]
+_METHODS = {"dp", "fft_cf", "fft_tree", "fft_hybrid", "shift_fft", "auto"}
 
 
 def _prepare(probs: Tensor, method: str, validate_args: bool) -> Tensor:
@@ -31,26 +31,51 @@ def _prepare(probs: Tensor, method: str, validate_args: bool) -> Tensor:
     return probs.float() if probs.dtype in {torch.float16, torch.bfloat16} else probs
 
 
-def _pmf(probs: Tensor, method: str) -> Tensor:
+def _block_size(block_size: int) -> None:
+    if (
+        not isinstance(block_size, int)
+        or isinstance(block_size, bool)
+        or block_size <= 0
+    ):
+        raise ValueError("block_size must be a positive Python integer")
+
+
+def _pmf(probs: Tensor, method: str, block_size: int = 32) -> Tensor:
     if method == "auto":
         method = _selection.select_method(probs)
     if method == "dp":
         return _backends.dp(probs)
+    if method == "shift_fft":
+        raise ValueError(
+            "shift_fft is a tail-only method; use cdf, sf, logcdf, or logsf"
+        )
     kernel = _backends.fft_cf_raw if method == "fft_cf" else _backends.fft_tree_raw
     # Float32 phase errors and off-support roundoff accumulate on deterministic
     # inputs. Work in double, then preserve the public output dtype.
     working = probs.double() if probs.dtype == torch.float32 else probs
-    return _backends.clean_fft(kernel(working)).to(probs.dtype)
+    raw = (
+        _backends.fft_hybrid_raw(working, block_size)
+        if method == "fft_hybrid"
+        else kernel(working)
+    )
+    return _backends.clean_fft(raw).to(probs.dtype)
 
 
-def pmf(probs: Tensor, *, method: Method = "dp", validate_args: bool = True) -> Tensor:
+def pmf(
+    probs: Tensor,
+    *,
+    method: Method = "dp",
+    validate_args: bool = True,
+    block_size: int = 32,
+) -> Tensor:
     """Return P(X=k), k=0..n, with shape [..., n+1] for probs shaped [..., n].
 
     DP is the accuracy-first default. FFT and opt-in auto may lose tiny
     probabilities; FFT clipping/normalization can affect gradients at zero.
     Float32/float64 precision and device are preserved; half inputs use float32.
     """
-    return _pmf(_prepare(probs, method, validate_args), method)
+    _block_size(block_size)
+    return _pmf(_prepare(probs, method, validate_args), method, block_size)
 
 
 def _count(k: int) -> None:
@@ -59,11 +84,21 @@ def _count(k: int) -> None:
 
 
 def cdf(
-    probs: Tensor, k: int, *, method: Method = "dp", validate_args: bool = True
+    probs: Tensor,
+    k: int,
+    *,
+    method: Method = "dp",
+    validate_args: bool = True,
+    block_size: int = 32,
 ) -> Tensor:
     """Return P(X <= k). DP/auto retain only counts through k."""
     probs = _prepare(probs, method, validate_args)
+    _block_size(block_size)
     _count(k)
+    if method == "shift_fft":
+        from ._log import logcdf
+
+        return logcdf(probs, k, method=method, validate_args=False).exp()
     zero = probs.sum(-1) * 0
     if k < 0:
         return zero
@@ -71,18 +106,28 @@ def cdf(
         return zero + 1
     if method in {"dp", "auto"}:
         return _backends.dp(probs, limit=k).sum(-1)
-    return _pmf(probs, method)[..., : k + 1].sum(-1)
+    return _pmf(probs, method, block_size)[..., : k + 1].sum(-1)
 
 
 def sf(
-    probs: Tensor, k: int, *, method: Method = "dp", validate_args: bool = True
+    probs: Tensor,
+    k: int,
+    *,
+    method: Method = "dp",
+    validate_args: bool = True,
+    block_size: int = 32,
 ) -> Tensor:
     """Return P(X > k), directly (never as 1 - cdf).
 
     DP/auto run a truncated recurrence on failures, retaining n-k entries.
     """
     probs = _prepare(probs, method, validate_args)
+    _block_size(block_size)
     _count(k)
+    if method == "shift_fft":
+        from ._log import logsf
+
+        return logsf(probs, k, method=method, validate_args=False).exp()
     zero = probs.sum(-1) * 0
     if k < 0:
         return zero + 1
@@ -90,7 +135,7 @@ def sf(
         return zero
     if method in {"dp", "auto"}:
         return _backends.dp_failures(probs, limit=probs.shape[-1] - k - 1).sum(-1)
-    return _pmf(probs, method)[..., k + 1 :].sum(-1)
+    return _pmf(probs, method, block_size)[..., k + 1 :].sum(-1)
 
 
 def proportional_tail(
@@ -101,6 +146,7 @@ def proportional_tail(
     side: Literal["left", "right"] = "left",
     method: Method = "dp",
     validate_args: bool = True,
+    block_size: int = 32,
 ) -> Tensor:
     """Return P(S/(S+U) < beta) or P(S/(S+U) > beta), per batch.
 
@@ -111,6 +157,9 @@ def proportional_tail(
     Auto uses DP for both subset distributions.
     """
     probs = _prepare(probs, method, validate_args)
+    _block_size(block_size)
+    if method == "shift_fft":
+        raise ValueError("shift_fft is not supported for proportional tails")
     if not isinstance(beta, Real) or isinstance(beta, bool):
         raise TypeError("beta must be a real Python scalar")
     beta = float(beta)
@@ -139,17 +188,19 @@ def proportional_tail(
         return (
             zero
             if side == "left"
-            else sf(selected, 0, method=backend, validate_args=False)
+            else sf(
+                selected, 0, method=backend, validate_args=False, block_size=block_size
+            )
         )
     if beta == 1:
         return (
-            sf(other, 0, method=backend, validate_args=False)
+            sf(other, 0, method=backend, validate_args=False, block_size=block_size)
             if side == "left"
             else zero
         )
 
-    pmf_s = _pmf(selected, backend)
-    pmf_u = _pmf(other, backend)
+    pmf_s = _pmf(selected, backend, block_size)
+    pmf_u = _pmf(other, backend, block_size)
     n = probs.shape[-1]
     numerator, denominator = beta.as_integer_ratio()
     denominator -= numerator

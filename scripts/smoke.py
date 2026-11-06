@@ -2,7 +2,7 @@
 
 import torch
 
-from pytorch_poibin import cdf, pmf, proportional_tail, sf
+from pytorch_poibin import cdf, logcdf, logpmf, logsf, pmf, proportional_tail, sf
 
 
 def main():
@@ -27,6 +27,10 @@ def main():
         assert p.grad is not None and bool(torch.isfinite(p.grad).all())
         for method in ["fft_cf", "fft_tree", "auto"]:
             torch.testing.assert_close(pmf(p, method=method), pmf(p))
+        torch.testing.assert_close(pmf(p, method="fft_hybrid", block_size=8), pmf(p))
+        torch.testing.assert_close(logpmf(p).exp(), pmf(p))
+        torch.testing.assert_close(logcdf(p, 0).exp(), cdf(p, 0))
+        torch.testing.assert_close(logsf(p, 1, method="shift_fft").exp(), sf(p, 1))
         print(f"{device}: package examples and gradients passed")
 
 

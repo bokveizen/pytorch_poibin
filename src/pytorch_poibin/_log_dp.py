@@ -113,6 +113,9 @@ def log_dp(
     failures: bool = False,
     reduce: bool = False,
 ) -> Tensor:
+    # Function.forward runs with grad disabled, so decide whether to retain
+    # prefixes here. A requires-grad input inside no_grad is still inference.
+    source = probs if torch.is_grad_enabled() else probs.detach()
     return _LogDP.apply(
-        probs, probs.shape[-1] if limit is None else limit, failures, reduce
+        source, probs.shape[-1] if limit is None else limit, failures, reduce
     )

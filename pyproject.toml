@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytorch-poibin"
-version = "0.2.0"
+version = "0.3.0"
 description = "Batched, differentiable Poisson binomial probabilities in PyTorch"
 readme = "README.md"
 requires-python = ">=3.10"

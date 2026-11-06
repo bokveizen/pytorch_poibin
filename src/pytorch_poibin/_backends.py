@@ -52,6 +52,11 @@ def fft_tree_raw(probs: Tensor) -> Tensor:
     if n == 0 or probs.numel() == 0:
         return dp(probs)
     nodes = torch.stack((1 - probs, probs), dim=-1)
+    return convolve_nodes(nodes, n)
+
+
+def convolve_nodes(nodes: Tensor, degree: int) -> Tensor:
+    """Convolve polynomial nodes; callers supply nonempty batch/trial axes."""
     # An odd node is carried without FFT padding until the next level.
     while nodes.shape[-2] > 1:
         count = nodes.shape[-2]
@@ -68,7 +73,18 @@ def fft_tree_raw(probs: Tensor) -> Tensor:
             nodes = torch.cat(
                 (nodes, pad(carry, (0, length - carry.shape[-1]))), dim=-2
             )
-    return nodes.squeeze(-2)[..., : n + 1]
+    return nodes.squeeze(-2)[..., : degree + 1]
+
+
+def fft_hybrid_raw(probs: Tensor, block_size: int = 32) -> Tensor:
+    """Build block PMFs with DP, then convolve them in a balanced FFT tree."""
+    n = probs.shape[-1]
+    if n == 0 or probs.numel() == 0:
+        return dp(probs)
+    width = min(block_size, n)
+    count = (n + width - 1) // width
+    blocks = pad(probs, (0, count * width - n)).reshape(*probs.shape[:-1], count, width)
+    return convolve_nodes(dp(blocks), n)
 
 
 def clean_fft(result: Tensor) -> Tensor:

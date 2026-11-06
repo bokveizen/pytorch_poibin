@@ -169,6 +169,28 @@ def test_underflow_gradient(device):
     torch.testing.assert_close(p.grad, torch.full_like(p, 2), atol=1e-9, rtol=1e-9)
 
 
+def test_float32_extreme_log_accuracy(device):
+    p = torch.full((2048,), 0.001, device=device, dtype=torch.float32)
+    reference = p.new_tensor(2048 * math.log(float(p[0])))
+    torch.testing.assert_close(logsf(p, 2047), reference, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "values,k", [([0.999] * 160, 2), ([0.001] * 160, 157), ([1e-300], 0)]
+)
+def test_high_precision_tail_gradient(device, values, k):
+    p = torch.tensor(values, device=device, dtype=torch.float64, requires_grad=True)
+    _, lc, ls = high_precision_logs(values, k)
+    leave_one_out, _, _ = high_precision_logs(values[1:], 0)
+    density_log = leave_one_out[k] if 0 <= k < len(leave_one_out) else -math.inf
+    for fn, reference, sign in [(logcdf, lc, -1), (logsf, ls, 1)]:
+        gradient = torch.autograd.grad(fn(p, k), p)[0][0]
+        expected = sign * math.exp(density_log - reference)
+        torch.testing.assert_close(
+            gradient, p.new_tensor(expected), atol=1e-8, rtol=1e-9
+        )
+
+
 @pytest.mark.parametrize(
     "fn",
     [logpmf, lambda p, **kw: logcdf(p, 0, **kw), lambda p, **kw: logsf(p, 0, **kw)],

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — prepared, unreleased
+
+- Add direct logpmf/logcdf/logsf recurrences with float64 internals and public
+  dtype preservation, including probabilities below ordinary floating-point range.
+- Add signed-log coefficient adjoints for defined first derivatives, including
+  deterministic boundary cases; document the impossible-event convention.
+- Add explicit shift_fft count tails with bracketed exponential tilting and
+  logarithmic reconstruction. Its first-order backward uses the log-DP adjoint.
+- Add experimental fft_hybrid block DP/FFT convolution and bounded experiments
+  across block sizes, devices, dtypes, forward/backward latency, and memory.
+
 ## 0.2.0 — prepared, unreleased
 
 This first packaged release combines the planned v0.1 correctness/packaging

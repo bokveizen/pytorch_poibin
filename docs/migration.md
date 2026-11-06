@@ -1,5 +1,17 @@
 # Migration from the prototype
 
+## Additions in 0.3.0
+
+Existing 0.2.0 calls retain their default behavior. New logpmf/logcdf/logsf
+functions compute directly in log space; impossible events return -inf. They
+support first derivatives, with a zero convention for undefined impossible-event
+derivatives. The new `shift_fft` method is available only on count-tail functions.
+`fft_hybrid` accepts an optional positive integer `block_size` (default 32) on
+ordinary probability functions. DP remains the default and log auto uses log DP.
+No new hybrid dispatch profiles are adopted merely because the method exists.
+
+## Original prototype API
+
 Version 0.2.0 makes a clean API break. The root `poi_bin` and `tails` modules and
 the exponential educational functions are removed from the installed API.
 

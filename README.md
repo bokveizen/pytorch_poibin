@@ -4,7 +4,7 @@ Batched, differentiable Poisson binomial PMFs and tail probabilities on CPU and 
 For independent Bernoulli trials with probabilities `p_i`, compute the distribution
 of their sum even when each trial has a different probability.
 
-Version 0.2.0 is prepared for release; this change does not publish to PyPI.
+Version 0.3.0 is prepared for release; this change does not publish to PyPI.
 The package replaces the original research prototype with a clean API.
 See [migration](docs/migration.md) and [release notes](CHANGELOG.md).
 
@@ -72,14 +72,14 @@ move them to the CPU.
 ## API
 
 ```python
-pmf(probs, *, method="dp", validate_args=True)
-cdf(probs, k, *, method="dp", validate_args=True)
-sf(probs, k, *, method="dp", validate_args=True)
+pmf(probs, *, method="dp", validate_args=True, block_size=32)
+cdf(probs, k, *, method="dp", validate_args=True, block_size=32)
+sf(probs, k, *, method="dp", validate_args=True, block_size=32)
 logpmf(probs, *, method="dp", validate_args=True)
 logcdf(probs, k, *, method="dp", validate_args=True)
 logsf(probs, k, *, method="dp", validate_args=True)
 proportional_tail(probs, beta, interesting, *, side="left",
-                  method="dp", validate_args=True)
+                  method="dp", validate_args=True, block_size=32)
 ```
 
 - `cdf` returns `P(X <= k)` and `sf` returns `P(X > k)`. `k` must be a scalar
@@ -103,6 +103,7 @@ proportional_tail(probs, beta, interesting, *, side="left",
 | `dp` (default) | Nonnegative tensor recurrence | O(B n²) | O(B n) |
 | `fft_cf` | Chunked characteristic-function inversion | O(B n² + B n log n) | O(B n), frequency chunks capped at 128 |
 | `fft_tree` | Balanced polynomial convolution | O(B n log² n) | O(B n) |
+| `fft_hybrid` | DP blocks followed by an FFT tree; tune `block_size` | O(B n b + B n log²(n/b)) for block size b | O(B n) |
 | `auto` | Opt-in measured DP/tree selection | Selected method | Selected method |
 
 `B` is the product of batch dimensions. Autograd retains additional state: DP and
@@ -121,6 +122,33 @@ its floating-point range. Use `logpmf`, `logcdf`, or `logsf` to compute directly
 in log space; impossible events return `-inf`. Their dedicated backward supports
 first derivatives; undefined derivatives of impossible log events use zero.
 See [numerical behavior](docs/numerics.md).
+
+Log functions use float64 internals and preserve the public output dtype, reducing
+accumulated error in long recurrences. A float32 output still quantizes a large
+logarithm; choose float64 when log-probability precision matters.
+
+### Rare tails with exponential tilting
+
+```python
+from pytorch_poibin import logsf
+
+p = torch.full((2000,), 0.5, dtype=torch.float64)
+print(logsf(p, 1999))                      # direct log DP: about -1386.29436
+print(logsf(p, 1999, method="shift_fft"))  # exponential tilt + FFT
+```
+
+`shift_fft` is an explicit method for `cdf`, `sf`, `logcdf`, and `logsf`; it is
+not a full-PMF or proportional-tail method. It moves the queried region near
+the tilted mean, convolves, and reconstructs the tail logarithm. Large requested
+tails use stable logarithmic complementation. Its bracketed solver and output
+checks stay on the input device but synchronize CUDA.
+
+Shifted FFT first derivatives use the log-DP adjoint, recomputing its prefix
+states. This deliberately avoids differentiating the numerical root or FFT
+cleanup; backward therefore has DP cost and memory, and is not promised to be
+faster. The method raises on solver or numerical-check failures without fallback.
+See [the algorithm and limitations](docs/numerics.md) and
+[experiment reproduction](benchmarks/README.md).
 
 `auto` explicitly opts into approximate PMFs. It uses tree convolution only for
 exact workloads with checked-in accuracy-qualified speedups of at least 1.25x.
