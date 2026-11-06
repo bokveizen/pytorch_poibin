@@ -10,7 +10,9 @@ from pytorch_poibin import cdf, logcdf, logpmf, logsf, pmf, sf
 
 def high_precision_logs(values, k):
     """Independent arbitrary-precision coefficient recurrence, not float PMF logs."""
-    with mp.workdps(100):
+    # Enough precision to retain a near-one event's representable log, e.g.
+    # log(1-1e-300), as well as small probabilities with arbitrarily low exponents.
+    with mp.workdps(400):
         coefficients = [mp.mpf(1)]
         for value in values:
             p = mp.mpf(float(value))
