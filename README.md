@@ -75,6 +75,9 @@ move them to the CPU.
 pmf(probs, *, method="dp", validate_args=True)
 cdf(probs, k, *, method="dp", validate_args=True)
 sf(probs, k, *, method="dp", validate_args=True)
+logpmf(probs, *, method="dp", validate_args=True)
+logcdf(probs, k, *, method="dp", validate_args=True)
+logsf(probs, k, *, method="dp", validate_args=True)
 proportional_tail(probs, beta, interesting, *, side="left",
                   method="dp", validate_args=True)
 ```
@@ -114,7 +117,10 @@ use these paths; proportional auto uses DP subset distributions.
 negative roundoff and normalize the final PMF without adding epsilon. FFT
 internals use float64/complex128, then return the requested output dtype. Cleanup
 cannot recover probabilities obscured by FFT roundoff. DP still underflows below
-its floating-point range. See [numerical behavior](docs/numerics.md).
+its floating-point range. Use `logpmf`, `logcdf`, or `logsf` to compute directly
+in log space; impossible events return `-inf`. Their dedicated backward supports
+first derivatives; undefined derivatives of impossible log events use zero.
+See [numerical behavior](docs/numerics.md).
 
 `auto` explicitly opts into approximate PMFs. It uses tree convolution only for
 exact workloads with checked-in accuracy-qualified speedups of at least 1.25x.

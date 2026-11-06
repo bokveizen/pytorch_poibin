@@ -10,7 +10,7 @@ earlier states safe for backward.
 
 For 100 fair coins with float64 probabilities, PMF entry zero, CDF at zero, and SF
 at 99 retain `2**-100`, approximately `7.89e-31`. DP can still underflow for
-sufficiently small events; this package makes no log-domain guarantee.
+sufficiently small events; use the log-domain functions below for extended range.
 
 Inside support, CDF takes O(B n min(n,k+1)) time and O(B min(n,k+1)) forward
 workspace. SF uses failures and takes O(B n (n-k)) time and O(B (n-k)) workspace.
@@ -20,6 +20,28 @@ Subtraction in `1-p` is also subject to rounding: a small representable success
 probability does not guarantee its complement is distinguishable from one. SF
 uses original probabilities directly, avoiding a second complement `1-(1-p)`
 that would otherwise erase tiny successes.
+
+## Log-domain DP
+
+`logpmf`, `logcdf`, and `logsf` compute in the log semiring with `logaddexp`;
+they do not take logs of an underflowed ordinary PMF. For 2,000 fair coins the
+log probability of zero or 2,000 successes remains `-2000*log(2)` even though
+the corresponding float64 probability is zero. Cumulative queries truncate the
+recurrence; SF uses original log-p and log-one-minus-p with the roles swapped.
+
+Inference workspace has the same count dimensions as ordinary DP. Backward
+retains the prefix states and propagates positive/negative coefficient adjoints
+in signed log arithmetic. Differentiating coefficients, rather than log states,
+preserves paths through zero coefficients at deterministic inputs. Cumulative
+events seed all included coefficients, including zeros, so finite-event first
+derivatives remain correct at probabilities zero and one.
+
+Impossible log events return `-inf`; their derivatives are undefined, and this
+implementation uses zero gradients for those entries to make masked losses safe.
+Consequently exponentiating a log-PMF and differentiating through impossible
+entries is not a substitute for the ordinary PMF at deterministic boundaries.
+Only first derivatives are supported by the dedicated log adjoint. `auto` stays
+on log DP; it never logs an ordinary FFT result.
 
 ## FFT methods
 
@@ -68,5 +90,5 @@ right probabilities therefore need not sum to one.
 The supported target is eager PyTorch on Linux CPU/CUDA with float32/float64
 computation. Half inputs promote to float32. Native half arithmetic, custom
 CUDA/Triton kernels, graph capture, compilation guarantees, `vmap`, other
-accelerators, and log-domain outputs are outside this release. Probability
+accelerators are outside this release. Probability
 validation can synchronize CUDA and may be disabled for already-validated inputs.
