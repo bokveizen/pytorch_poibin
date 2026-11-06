@@ -118,6 +118,9 @@ backward. The forward log tail supplies its normalization, so no cumulative
 reference probability is recomputed in backward. It shares the
 log-DP convention for impossible events and does not support second derivatives.
 Threshold, dtype/device, and batch semantics match the existing count-tail API.
+Ordinary cdf/sf wrappers exponentiate the returned log probability; that output
+and its exponential derivative can underflow. The log APIs preserve the extended
+range and are the intended interface for those events.
 
 ## Hybrid DP–FFT convolution
 

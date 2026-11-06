@@ -142,6 +142,9 @@ not a full-PMF or proportional-tail method. It moves the queried region near
 the tilted mean, convolves, and reconstructs the tail logarithm. Large requested
 tails use stable logarithmic complementation. Its bracketed solver and output
 checks stay on the input device but synchronize CUDA.
+Ordinary `cdf`/`sf` with this method exponentiate the log result and can still
+underflow, including through the exponential's gradient. Use `logcdf`/`logsf`
+for events below the ordinary floating-point range.
 
 Count-tail first derivatives use nonnegative leave-one-out densities computed
 with prefix/suffix log DP. This retains tiny derivatives of near-one tails and
@@ -149,7 +152,9 @@ avoids differentiating the numerical root or FFT cleanup. Shifted FFT backward
 therefore has DP cost and memory and is not promised to be faster. The method
 raises on solver or numerical-check failures without fallback.
 See [the algorithm and limitations](docs/numerics.md) and
-[experiment reproduction](benchmarks/README.md).
+[experiment reproduction](benchmarks/README.md). The
+[research findings](docs/research-results.md) compare accuracy, range, inference,
+backward time, and memory across the measured workloads.
 
 `auto` explicitly opts into approximate PMFs. It uses tree convolution only for
 exact workloads with checked-in accuracy-qualified speedups of at least 1.25x.

@@ -28,6 +28,12 @@ METHODS = ("dp", "fft_cf", "fft_tree", "fft_hybrid")
 
 
 def workspace_estimate(case):
+    # Allocator granularity dominates tiny cases: measured n=32/B=1 DP CUDA
+    # training peaks are ~37 KiB despite smaller raw tensor byte counts.
+    return max(1024**2, _tensor_workspace_estimate(case))
+
+
+def _tensor_workspace_estimate(case):
     """Conservative tensor-workspace guard, excluding the Python/Torch runtime."""
     b, n = case["batch_size"], case["n"]
     size = 8 if case["dtype"] == "float64" else 4

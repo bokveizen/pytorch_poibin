@@ -73,6 +73,17 @@ def test_training_budget_allows_useful_comparisons():
         )
 
 
+def test_small_training_estimate_covers_measured_allocator_peak():
+    case = {
+        "batch_size": 1,
+        "n": 32,
+        "dtype": "float32",
+        "method": "dp",
+        "backward": True,
+    }
+    assert workspace_estimate(case) >= 37376
+
+
 def test_log_tail_reference_retains_underflow():
     import math
 

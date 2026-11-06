@@ -260,9 +260,35 @@ def main():
             "Device",
             "Method",
             "ms",
-            "Timing samples",
+            "Timing blocks",
             "Peak MiB",
             "Memory metric",
+        ],
+        rows,
+    )
+    rows = []
+    for dtype in ["float32", "float64"]:
+        for method in ["dp", "shift_fft"]:
+            subset = [
+                r
+                for r in valid(reports["Log tails forward + backward"]["records"])
+                if r["dtype"] == dtype and r["method"] == method
+            ]
+            if subset:
+                rows.append(
+                    [
+                        dtype,
+                        method,
+                        f"{max(r['max_abs_gradient_error'] for r in subset):.3g}",
+                        f"{max(r['max_abs_gradient_error'] / abs(r['reference_gradient']) for r in subset):.3g}",
+                    ]
+                )
+    lines += table(
+        [
+            "Output dtype",
+            "Method",
+            "Max absolute gradient error",
+            "Max relative gradient error",
         ],
         rows,
     )
@@ -270,8 +296,9 @@ def main():
         "Shifted FFT accelerates only its forward algorithm. Its first-order backward",
         "uses nonnegative leave-one-out densities from prefix/suffix log DP. Training",
         "retains DP complexity; it is not an FFT-complexity backward.",
-        "Long cases can have few timing samples within the bounded measurement window;",
-        "the raw reports include sample counts and IQR rather than implying universal gains.",
+        "Long cases can have few timing blocks within the bounded measurement window;",
+        "a block can contain multiple calls chosen by Timer. Reports include block counts",
+        "and IQR rather than implying universal gains.",
         "For these fixed-width tails, truncated log DP is O(n), whereas shifted FFT",
         "is O(n log² n). Any observed inference gain reflects tensor parallelism and",
         "reduced Python-loop overhead, not a better asymptotic bound than truncated DP.",

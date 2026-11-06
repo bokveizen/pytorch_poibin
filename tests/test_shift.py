@@ -2,6 +2,7 @@ import math
 
 import pytest
 import torch
+from scipy.stats import poisson_binom
 
 from pytorch_poibin import (
     _backends,
@@ -100,6 +101,14 @@ def test_shift_gradcheck_and_endpoints(device):
     )
     for fn in [logcdf, logsf, cdf, sf]:
         assert torch.autograd.gradcheck(lambda p: fn(p, 1, method="shift_fft"), (p,))
+        # The favorable-tail choice switches here; the probability and its
+        # first derivative remain continuous across that implementation branch.
+        balanced = torch.tensor(
+            [0.2, 0.5, 0.8], device=device, dtype=torch.float64, requires_grad=True
+        )
+        assert torch.autograd.gradcheck(
+            lambda p: fn(p, 1, method="shift_fft"), (balanced,)
+        )
     for values in [[0.0, 0.3, 0.7], [1.0, 0.2, 0.8], [0.0, 0.0, 1.0]]:
         p = torch.tensor(values, device=device, dtype=torch.float64, requires_grad=True)
         for fn in [logcdf, logsf]:
@@ -110,6 +119,32 @@ def test_shift_gradcheck_and_endpoints(device):
                     ga = torch.autograd.grad(actual, p)[0]
                     ge = torch.autograd.grad(expected, p)[0]
                     torch.testing.assert_close(ga, ge)
+
+
+def test_large_near_mean_queries(device):
+    generator = torch.Generator().manual_seed(911)
+    p = (torch.rand(3, 513, generator=generator, dtype=torch.float64) * 0.9 + 0.05).to(
+        device
+    )
+    p[:, 0] = 0
+    p[:, 1] = 1
+    coefficients = poisson_binom.pmf(
+        torch.arange(514).numpy()[:, None], p.cpu().numpy()
+    ).T.copy()
+    expected = torch.as_tensor(coefficients, device=device, dtype=p.dtype)
+    for k in [255, 256, 257]:
+        torch.testing.assert_close(
+            logcdf(p, k, method="shift_fft"),
+            expected[:, : k + 1].sum(-1).log(),
+            atol=1e-10,
+            rtol=1e-10,
+        )
+        torch.testing.assert_close(
+            logsf(p, k, method="shift_fft"),
+            expected[:, k + 1 :].sum(-1).log(),
+            atol=1e-10,
+            rtol=1e-10,
+        )
 
 
 def test_solver_extreme_bracket(device):
