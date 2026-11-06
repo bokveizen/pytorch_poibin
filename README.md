@@ -1,191 +1,170 @@
 # PyTorch Poisson Binomial
 
-> **⚠️ Development Status**: This repository is currently under active development. APIs may change and some planned features are not yet implemented. Use with caution in production environments.
+Batched, differentiable Poisson binomial PMFs and tail probabilities on CPU and CUDA.
+For independent Bernoulli trials with probabilities `p_i`, compute the distribution
+of their sum even when each trial has a different probability.
 
-Efficient computation of Poisson binomial distributions in PyTorch with multiple implementation strategies.
+Version 0.2.0 is prepared for release; this change does not publish to PyPI.
+The package replaces the original research prototype with a clean API.
+See [migration](docs/migration.md) and [release notes](CHANGELOG.md).
 
-## Features
+## Install
 
-* **Multiple implementation approaches** with different performance characteristics
-* **Dynamic Programming method** (`pmf_poibin_naive_dp_vectorized`): O(n²) time, educational and surprisingly fast
-* **FFT-based characteristic function** (`pmf_poibin_fft`): O(n²) time for setup + O(n log n) FFT
-* **Legacy naive methods** for educational purposes and small problems
-* **GPU acceleration** via native PyTorch tensors
-* **Batch processing** of multiple probability vectors in parallel
-* **Comprehensive numerical verification** ensuring accuracy across all methods
+Requires Python 3.10+ and PyTorch 2.6+. Install the appropriate CPU or CUDA build
+of PyTorch, then install from a checkout:
 
-## Current Implementations
+```bash
+git clone https://github.com/bokveizen/pytorch_poibin.git
+cd pytorch_poibin
+python -m pip install .
 
-### 1. Dynamic Programming
-```python
-from poi_bin import pmf_poibin_naive_dp_vectorized
-
-# Fast O(n²) method using recurrence relation
-pmf = pmf_poibin_naive_dp_vectorized(prob_vector, device)
+# Development, tests, and benchmarks:
+python -m pip install -e '.[dev]'
 ```
 
-### 2. FFT-based Method
-```python
-from poi_bin import pmf_poibin_fft
+PyTorch is the only runtime dependency. SciPy is an independent test and benchmark
+reference, not a library dependency.
 
-# FFT-based characteristic function approach
-pmf = pmf_poibin_fft(prob_vector, device)
-```
-
-### 3. Educational Implementations
-```python
-from poi_bin import pmf_poibin_naive, pmf_poibin_naive_improved, pmf_poibin_naive_dp
-
-# Original naive O(2^n) - for understanding only
-pmf = pmf_poibin_naive(prob_vector, device)
-
-# Improved naive using itertools.combinations
-pmf = pmf_poibin_naive_improved(prob_vector, device)
-
-# Non-vectorized DP for educational purposes  
-pmf = pmf_poibin_naive_dp(prob_vector, device)
-```
-
-## Quick Start
+## Quick start
 
 ```python
 import torch
-from poi_bin import pmf_poibin_naive_dp_vectorized
+from pytorch_poibin import pmf, cdf, sf, proportional_tail
 
-# Single probability vector
-n = 100
-probs = torch.rand(n, device='cuda') * 0.8 + 0.1
-pmf = pmf_poibin_naive_dp_vectorized(probs, device=torch.device('cuda'))
-print(pmf.shape)  # -> (n+1,)
+probs = torch.tensor([0.2, 0.7], dtype=torch.float64)
+print(pmf(probs))       # [0.24, 0.62, 0.14]
+print(cdf(probs, 0))    # P(X <= 0) = 0.24
+print(sf(probs, 1))     # P(X > 1)  = 0.14
 
-# Batch processing
-batch_size = 32
-prob_batch = torch.rand(batch_size, n, device='cuda') * 0.8 + 0.1
-pmf_batch = pmf_poibin_naive_dp_vectorized(prob_batch, device=torch.device('cuda'))
-print(pmf_batch.shape)  # -> (batch_size, n+1)
+batch = torch.tensor([[0.2, 0.7], [0.4, 0.5]], dtype=torch.float64)
+assert pmf(batch).shape == (2, 3)
+assert cdf(batch, 0).shape == (2,)
+
+interesting = torch.tensor([True, False])
+print(proportional_tail(batch, 0.5, interesting))
+# P(interesting successes / total successes < 0.5) = [0.56, 0.30]
 ```
 
-## Performance Characteristics
+Inputs have shape `[..., n]` with any number of batch dimensions. PMFs have shape
+`[..., n+1]`, ordered by success count; tails have shape `[...]`. Unbatched tails
+are scalar tensors. Zero trials have PMF `[1]`.
 
-| Method | Time Complexity | Current Use Case | Memory | Notes |
-|--------|----------------|------------------|---------|-------|
-| `pmf_poibin_naive_dp_vectorized` | O(n²) | **Currently best for n < 100** | O(n) | Fast, simple operations |
-| `pmf_poibin_fft` | O(n²) + O(n log n) | Interim implementation | O(n) | Will be optimized with tree convolution |
-| `pmf_poibin_naive_improved` | O(2^n) | n ≤ 12 only | O(2^n) | Educational |
-| `pmf_poibin_naive` | O(2^n) | n ≤ 10 only | O(2^n) | Reference implementation |
+The input determines device and precision. Float32 and float64 are preserved;
+float16/bfloat16 compute and return float32. Integer and complex inputs are
+rejected. Probabilities must be finite and in `[0, 1]`.
 
-**Key Insight**: Despite having the same theoretical complexity, the DP method often outperforms FFT for moderate n due to:
-- Lower constant factors (simple arithmetic vs complex number operations)
-- Better GPU vectorization of basic operations
-- Superior cache locality and memory access patterns
-
-## Testing and Verification
+## Gradients and CUDA
 
 ```python
-# Run comprehensive numerical verification
-python verify_numerical_accuracy.py
-
-# Performance benchmarks
-python test_naive_improvements.py
-
-# Detailed FFT vs DP analysis
-python analyze_fft_vs_dp.py
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+probs = torch.tensor([0.2, 0.3, 0.7], device=device,
+                     dtype=torch.float64, requires_grad=True)
+loss = sf(probs, 1)
+loss.backward()
+assert probs.grad is not None
 ```
 
-## Planned Optimizations
+DP supports derivatives through probabilities, including zero and one. FFT
+methods support autograd on interior inputs, but output cleanup can change
+derivatives at zero. Library backends never convert probabilities to NumPy or
+move them to the CPU.
 
-### 1. Divide-and-Conquer FFT Tree Convolution
-**Target**: O(n log² n) time complexity - **this will become the primary method**
-- Break down convolution into smaller subproblems
-- Use tree structure to minimize FFT overhead
-- Expected to outperform DP for n > 1000 and become the recommended approach
-- Will make FFT-based computation the default choice for all problem sizes
+## API
 
-### 2. Mixed-Precision Support
-- FP16/FP32 support for reduced GPU memory usage
-- Maintain numerical accuracy while improving performance
-
-### 3. Specialized Kernels
-- Custom CUDA kernels for DP method
-- Fused operations to reduce memory bandwidth
-
-### 4. Adaptive Method Selection
 ```python
-# Planned API: automatically choose best method based on problem size
-pmf = pmf_poibin_auto(prob_vector, device)  # Chooses optimal implementation
+pmf(probs, *, method="dp", validate_args=True)
+cdf(probs, k, *, method="dp", validate_args=True)
+sf(probs, k, *, method="dp", validate_args=True)
+proportional_tail(probs, beta, interesting, *, side="left",
+                  method="dp", validate_args=True)
 ```
 
-## API Reference
+- `cdf` returns `P(X <= k)` and `sf` returns `P(X > k)`. `k` must be a scalar
+  Python integer. Thresholds outside support return exact zeros or ones.
+- Proportional tails use strict `< beta` for `side="left"` and strict `> beta`
+  for `side="right"`. `beta` is a finite real scalar in `[0, 1]`; equality enters
+  neither event. Interpret beta as the exact supplied Python float, including
+  for values such as `1/3`.
+- `interesting` is a binary tensor on the input device, broadcastable to the
+  probability shape. Its complement defines the uninteresting subset. Boolean,
+  binary integer, and binary floating masks are accepted; masks receive no gradients.
+- Both proportional events exclude outcomes with no successes. Results remain
+  unconditional. Beta endpoints, empty subsets, and zero trials are supported.
+- `validate_args=False` skips probability-value checks. Type, shape, mask, and
+  method checks remain. Validation and FFT output checks can synchronize CUDA.
 
-### Core Functions
+## Algorithms and accuracy
 
-#### `pmf_poibin_naive_dp_vectorized(prob_matrix_raw, device)`
-- **Arguments**:
-  - `prob_matrix_raw` (`Tensor[B, n]` or `Tensor[n]`): probability values in [0,1]
-  - `device` (`torch.device`): target device for computation
-- **Returns**: `Tensor[B, n+1]` or `Tensor[n+1]`
-- **Time**: O(n²), **Space**: O(n)
+| Method | Behavior | Forward time | Forward workspace |
+|---|---|---|---|
+| `dp` (default) | Nonnegative tensor recurrence | O(B n²) | O(B n) |
+| `fft_cf` | Chunked characteristic-function inversion | O(B n² + B n log n) | O(B n), frequency chunks capped at 128 |
+| `fft_tree` | Balanced polynomial convolution | O(B n log² n) | O(B n) |
+| `auto` | Opt-in measured DP/tree selection | Selected method | Selected method |
 
-#### `pmf_poibin_fft(prob_matrix_raw, device)`
-**FFT-based method**
-- Same signature as above
-- **Time**: O(n²) + O(n log n), **Space**: O(n)
+`B` is the product of batch dimensions. Autograd retains additional state: DP and
+characteristic-function backward storage can be quadratic; tree storage grows
+across levels. These are not constant-memory training kernels.
 
-## Mathematical Background
+DP tails use truncated recurrence. CDF retains at most `k+1` counts; SF retains
+at most `n-k` failure counts and never subtracts from one. Auto count tails also
+use these paths; proportional auto uses DP subset distributions.
 
-The Poisson binomial distribution generalizes the binomial distribution to the case where each trial has a different success probability p_i. For n independent Bernoulli trials with probabilities [p₁, p₂, ..., pₙ], the PMF gives P(X = k) for k = 0, 1, ..., n.
+**Use DP for tiny probabilities or gradient-sensitive work.** FFT methods clip
+negative roundoff and normalize the final PMF without adding epsilon. FFT
+internals use float64/complex128, then return the requested output dtype. Cleanup
+cannot recover probabilities obscured by FFT roundoff. DP still underflows below
+its floating-point range. See [numerical behavior](docs/numerics.md).
 
-### Dynamic Programming Approach
-Uses the recurrence relation:
+`auto` explicitly opts into approximate PMFs. It uses tree convolution only for
+exact workloads with checked-in accuracy-qualified speedups of at least 1.25x.
+Unknown hardware, runtime versions, thread settings, dtypes, or shapes fall back
+to DP. Inputs requiring gradients use DP. Ordinary calls never benchmark.
+See [benchmark results and reproduction](benchmarks/README.md).
+
+## Verify and build
+
+```bash
+python -m pytest -q                  # CPU and available CUDA tests
+python -m pytest -q -m 'not cuda'    # CPU-only selection
+python -m pytest -q -m cuda          # CUDA selection; skips without a device
+python scripts/smoke.py              # Executable examples and gradients
+python -m build                     # Wheel and source distribution in dist/
+python -m twine check dist/*
 ```
-P_i(k) = P_{i-1}(k) × (1 - p_i) + P_{i-1}(k-1) × p_i
-```
 
-### FFT Approach  
-Computes the characteristic function and applies inverse DFT.
-
-## Contributing
-
-Contributions welcome! Areas of interest:
-- Performance optimizations
-- Numerical stability improvements  
-- Additional test cases
-- Documentation improvements
-
-## License
-
-This project is licensed under the MIT License.
+Tests cover independent SciPy/enumeration references, analytical distributions,
+batch independence, deterministic probabilities, empty dimensions, rare tails,
+dtype promotion, and gradients. Failed checks exit nonzero. Linux CPU CI tests
+minimum and current PyTorch versions and installs the wheel outside the checkout.
+CUDA verification is opt-in on a GPU machine.
 
 ## Citation
 
-If you use this library in your research, please cite:
-
 ```bibtex
 @software{pytorch_poibin,
-  title = {PyTorch Poisson Binomial: Efficient computation with multiple algorithms},
+  title = {PyTorch Poisson Binomial},
   author = {Bu, Fanchen},
   year = {2025},
   url = {https://github.com/bokveizen/pytorch_poibin}
 }
 
 @article{hong2013computing,
-  title={On computing the distribution function for the Poisson binomial distribution},
-  author={Hong, Yili},
-  journal={Computational Statistics \& Data Analysis},
-  volume={59},
-  pages={41--51},
-  year={2013},
-  publisher={Elsevier}
+  title = {On computing the distribution function for the Poisson binomial distribution},
+  author = {Hong, Yili},
+  journal = {Computational Statistics & Data Analysis},
+  volume = {59},
+  pages = {41--51},
+  year = {2013}
+}
+
+@inproceedings{Bu2024UCom2,
+  title = {Tackling Prevalent Conditions in Unsupervised Combinatorial Optimization: Cardinality, Minimum, Covering, and More},
+  author = {Bu, Fanchen and Jo, Hyeonsoo and Lee, Soo Yong and Ahn, Sungsoo and Shin, Kijung},
+  booktitle = {ICML},
+  year = {2024}
 }
 ```
 
-Please also consider citing the following paper:
-```bibtex
-@inproceedings{Bu2024UCom2,
-  title={Tackling Prevalent Conditions in Unsupervised Combinatorial Optimization: Cardinality, Minimum, Covering, and More},
-  author={Bu, Fanchen and Jo, Hyeonsoo and Lee, Soo Yong and Ahn, Sungsoo and Shin, Kijung},
-  booktitle={ICML},
-  year={2024}
-}
-```
-See also the GitHub repository of the paper: [https://github.com/ai4co/unsupervised-CO-ucom2](https://github.com/ai4co/unsupervised-CO-ucom2)
+See also [the UCom2 repository](https://github.com/ai4co/unsupervised-CO-ucom2).
+Licensed under the [MIT License](LICENSE).

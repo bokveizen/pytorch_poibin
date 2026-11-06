@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytorch-poibin"
+version = "0.2.0"
+description = "Batched, differentiable Poisson binomial probabilities in PyTorch"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Fanchen Bu"}]
+dependencies = ["torch>=2.6"]
+
+[project.urls]
+Repository = "https://github.com/bokveizen/pytorch_poibin"
+Issues = "https://github.com/bokveizen/pytorch_poibin/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "hypothesis>=6", "scipy>=1.15", "build>=1", "twine>=6", "ruff>=0.11"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pytorch_poibin = ["profiles.json", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["cuda: requires a CUDA device"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

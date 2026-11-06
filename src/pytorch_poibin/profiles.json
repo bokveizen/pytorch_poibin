@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 1,
+      "n": 32,
+      "speedup": 4.533238789006102,
+      "max_abs_error": 1.1292056012468521e-08
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 1,
+      "n": 128,
+      "speedup": 4.744535566411586,
+      "max_abs_error": 7.145270625175115e-09
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 1,
+      "n": 512,
+      "speedup": 20.766236380591216,
+      "max_abs_error": 3.6425797794725767e-09
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 16,
+      "n": 32,
+      "speedup": 1.6381099984290741,
+      "max_abs_error": 2.673128052244067e-08
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 16,
+      "n": 128,
+      "speedup": 6.482112413277034,
+      "max_abs_error": 7.386491807093165e-09
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 16,
+      "n": 512,
+      "speedup": 13.450706084617543,
+      "max_abs_error": 3.678064727785646e-09
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 1,
+      "n": 32,
+      "speedup": 2.780389029079386,
+      "max_abs_error": 2.220446049250313e-16
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 1,
+      "n": 128,
+      "speedup": 8.262717558716492,
+      "max_abs_error": 1.1102230246251565e-15
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 1,
+      "n": 512,
+      "speedup": 21.49236389339135,
+      "max_abs_error": 4.884981308350689e-15
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 16,
+      "n": 32,
+      "speedup": 1.5824874001484794,
+      "max_abs_error": 4.440892098500626e-16
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 16,
+      "n": 128,
+      "speedup": 6.114924439787593,
+      "max_abs_error": 1.3322676295501878e-15
+    },
+    {
+      "runtime": {
+        "device": "cpu",
+        "hardware": "Intel(R) Xeon(R) Gold 6426Y",
+        "torch": "2.6.0+cu118",
+        "cuda": null,
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 16,
+      "n": 512,
+      "speedup": 11.554250077109632,
+      "max_abs_error": 5.329070518200751e-15
+    },
+    {
+      "runtime": {
+        "device": "cuda",
+        "hardware": "NVIDIA RTX A6000",
+        "torch": "2.6.0+cu118",
+        "cuda": "11.8",
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 16,
+      "n": 32,
+      "speedup": 3.4721098847298575,
+      "max_abs_error": 1.4641631906897601e-08
+    },
+    {
+      "runtime": {
+        "device": "cuda",
+        "hardware": "NVIDIA RTX A6000",
+        "torch": "2.6.0+cu118",
+        "cuda": "11.8",
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float32",
+      "batch_size": 16,
+      "n": 512,
+      "speedup": 12.509201566581435,
+      "max_abs_error": 3.707509868555725e-09
+    },
+    {
+      "runtime": {
+        "device": "cuda",
+        "hardware": "NVIDIA RTX A6000",
+        "torch": "2.6.0+cu118",
+        "cuda": "11.8",
+        "threads": 1,
+        "platform": "Linux"
+      },
+      "dtype": "torch.float64",
+      "batch_size": 1,
+      "n": 512,
+      "speedup": 18.04742824386642,
+      "max_abs_error": 5.551115123125783e-15
+    }
+  ]
+}

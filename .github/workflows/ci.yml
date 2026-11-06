@@ -1,0 +1,46 @@
+name: Test and build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: '3.10'
+            torch: 'torch==2.6.0'
+          - python: '3.13'
+            torch: 'torch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install '${{ matrix.torch }}' --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -e '.[dev]'
+      - run: ruff check src tests scripts benchmarks
+      - run: ruff format --check src tests scripts benchmarks
+      - run: python -m pytest -q
+      - run: python scripts/smoke.py
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Install wheel outside the checkout
+        shell: bash
+        run: |
+          python -m venv --system-site-packages "$RUNNER_TEMP/poibin-wheel"
+          "$RUNNER_TEMP/poibin-wheel/bin/python" -m pip install --no-deps --ignore-installed dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/poibin-wheel/bin/python" "$GITHUB_WORKSPACE/scripts/smoke.py"
+          "$RUNNER_TEMP/poibin-wheel/bin/python" -c 'import pytorch_poibin; assert "/src/" not in pytorch_poibin.__file__'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions-python-${{ matrix.python }}
+          path: dist/*
