@@ -24,7 +24,7 @@ from torch.utils.benchmark import Timer
 from pytorch_poibin import __version__, cdf, pmf, sf
 from pytorch_poibin._selection import hardware_key
 
-METHODS = ("dp", "fft_cf", "fft_tree")
+METHODS = ("dp", "fft_cf", "fft_tree", "fft_hybrid")
 
 
 def workspace_estimate(case):
@@ -34,21 +34,34 @@ def workspace_estimate(case):
     if case["method"] != "dp":
         size = 8  # FFT internals use float64, even for float32 output.
     if case["backward"]:
+        if case["method"] == "fft_tree":
+            return 32 * b * (n + 1) * (n + 1).bit_length() * size
+        if case["method"] == "fft_hybrid":
+            block = min(case.get("block_size", 32), n)
+            return (
+                4
+                * b
+                * (n + 1)
+                * (block + 8 * (n // max(1, block) + 1).bit_length())
+                * size
+            )
         # Saved recurrence states or characteristic-function factors can be quadratic.
-        return 32 * b * (n + 1) ** 2 * size
+        return 4 * b * (n + 1) ** 2 * size
     if case["method"] == "fft_cf":
         return 12 * b * max(1, n) * min(128, n + 1) * size
     return 32 * b * (n + 1) * size
 
 
-def evaluate(p, method, operation, threshold, validate_args=False):
+def evaluate(p, method, operation, threshold, validate_args=False, block_size=32):
     if operation == "pmf":
-        return pmf(p, method=method, validate_args=validate_args)
+        return pmf(p, method=method, validate_args=validate_args, block_size=block_size)
     function = cdf if operation == "cdf" else sf
-    return function(p, threshold, method=method, validate_args=validate_args)
+    return function(
+        p, threshold, method=method, validate_args=validate_args, block_size=block_size
+    )
 
 
-def accuracy_check(p, method, operation="pmf", threshold=2):
+def accuracy_check(p, method, operation="pmf", threshold=2, block_size=32):
     """Check diverse distributions for this exact shape, not just the timed sample."""
     generator = torch.Generator(device=p.device).manual_seed(2026)
     regimes = [
@@ -75,7 +88,9 @@ def accuracy_check(p, method, operation="pmf", threshold=2):
         elif operation == "sf":
             expected = expected[..., max(0, threshold + 1) :].sum(-1)
         with torch.no_grad():
-            actual = evaluate(sample, method, operation, threshold)
+            actual = evaluate(
+                sample, method, operation, threshold, block_size=block_size
+            )
         error = (actual.double() - expected).abs().max().item()
         if not math.isfinite(error):
             return float("inf")
@@ -89,14 +104,22 @@ def worker(case):
     device = torch.device(case["device"])
     dtype = getattr(torch, case["dtype"])
     p = torch.rand(case["batch_size"], case["n"], device=device, dtype=dtype)
-    error = accuracy_check(p, case["method"], case["operation"], case["threshold"])
+    block_size = case.get("block_size", 32)
+    error = accuracy_check(
+        p, case["method"], case["operation"], case["threshold"], block_size
+    )
     tolerance = 1e-10 if dtype == torch.float64 else 1e-5
     p.requires_grad_(case["backward"])
     method = case["method"]
     gradient_error = None
     if case["backward"]:
         actual_gradient = torch.autograd.grad(
-            evaluate(p, method, case["operation"], case["threshold"]).square().sum(), p
+            evaluate(
+                p, method, case["operation"], case["threshold"], block_size=block_size
+            )
+            .square()
+            .sum(),
+            p,
         )[0]
         expected_gradient = torch.autograd.grad(
             evaluate(p, "dp", case["operation"], case["threshold"]).square().sum(), p
@@ -105,7 +128,12 @@ def worker(case):
 
     def run():
         q = evaluate(
-            p, method, case["operation"], case["threshold"], case["validate_args"]
+            p,
+            method,
+            case["operation"],
+            case["threshold"],
+            case["validate_args"],
+            block_size,
         )
         if case["backward"]:
             torch.autograd.grad(q.square().sum(), p)
@@ -215,6 +243,9 @@ def main():
     )
     parser.add_argument("--methods", nargs="+", choices=METHODS, default=list(METHODS))
     parser.add_argument(
+        "--block-sizes", nargs="+", type=int, default=[8, 16, 32, 64, 128]
+    )
+    parser.add_argument(
         "--operations", nargs="+", choices=["pmf", "cdf", "sf"], default=["pmf"]
     )
     parser.add_argument("--threshold", type=int, default=2)
@@ -246,6 +277,7 @@ def main():
         for x in [
             *args.sizes,
             *args.batches,
+            *args.block_sizes,
             args.threads,
             args.memory_mib,
             args.timeout,
@@ -263,7 +295,13 @@ def main():
             for batch in args.batches:
                 for n in args.sizes:
                     for operation in args.operations:
-                        for method in args.methods:
+                        for method, block_size in [
+                            (m, width)
+                            for m in args.methods
+                            for width in (
+                                args.block_sizes if m == "fft_hybrid" else [32]
+                            )
+                        ]:
                             threshold = args.threshold
                             if args.tail_width is not None:
                                 if operation == "cdf":
@@ -276,6 +314,7 @@ def main():
                                 "batch_size": batch,
                                 "n": n,
                                 "method": method,
+                                "block_size": block_size,
                                 "operation": operation,
                                 "threshold": threshold,
                                 "backward": args.backward,
@@ -326,7 +365,7 @@ def main():
                                     }
                             results.append(record)
                             print(
-                                f"{device} {dtype} B={batch} n={n} {operation} {method}: {record['status']}",
+                                f"{device} {dtype} B={batch} n={n} {operation} {method} block={block_size}: {record['status']}",
                                 flush=True,
                             )
     report = {
